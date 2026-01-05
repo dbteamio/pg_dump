@@ -1,0 +1,100 @@
+name: Build patched pg_dump and publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      pg_version:
+        description: "PostgreSQL version (e.g. 18.1)"
+        required: true
+        default: "18.1"
+  push:
+    tags:
+      - "pg-dump-*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    env:
+      PG_VERSION: ${{ inputs.pg_version || '18.1' }}
+      PREFIX: /tmp/pg-install
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            flex \
+            bison \
+            libreadline-dev \
+            zlib1g-dev \
+            libssl-dev \
+            libxml2-dev \
+            libxslt1-dev \
+            liblz4-dev \
+            libzstd-dev \
+            ca-certificates \
+            curl
+
+      - name: Download PostgreSQL source
+        run: |
+          curl -LO https://ftp.postgresql.org/pub/source/v${PG_VERSION}/postgresql-${PG_VERSION}.tar.gz
+          tar -xzf postgresql-${PG_VERSION}.tar.gz
+
+      - name: Apply pg_dump patch
+        run: |
+          cd postgresql-${PG_VERSION}
+          patch -p1 < ../pg_dump.patch
+
+      - name: Configure PostgreSQL
+        run: |
+          cd postgresql-${PG_VERSION}
+          ./configure --prefix=${PREFIX}
+
+      - name: Build pg_dump
+        run: |
+          cd postgresql-${PG_VERSION}
+          make -C src/backend generated-headers -j$(nproc)
+          make -C src/bin/pg_dump -j$(nproc)
+
+      - name: Install pg_dump
+        run: |
+          cd postgresql-${PG_VERSION}
+          make -C src/bin/pg_dump install
+
+      - name: Verify binary
+        run: |
+          ${PREFIX}/bin/pg_dump --version
+          ldd ${PREFIX}/bin/pg_dump || true
+
+      - name: Package artifact
+        run: |
+          mkdir -p dist
+          cp ${PREFIX}/bin/pg_dump dist/
+          strip dist/pg_dump || true
+
+          tar -czf \
+            pg_dump-patched-${PG_VERSION}-linux-amd64.tar.gz \
+            -C dist pg_dump
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pg-dump-${{ env.PG_VERSION }}
+          name: "Patched pg_dump ${PG_VERSION}"
+          body: |
+            Patched pg_dump build for PostgreSQL ${PG_VERSION}
+
+            - OS: ubuntu-24.04
+            - glibc-based
+            - Built from official PostgreSQL sources
+            - Custom patch applied
+          files: |
+            pg_dump-patched-${{ env.PG_VERSION }}-linux-amd64.tar.gz
