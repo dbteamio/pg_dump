@@ -1,0 +1,16 @@
+diff --git a/src/bin/pg_dump/pg_dump.c b/src/bin/pg_dump/pg_dump.c
+index 35e7581d66d..80d790846d6 100644
+--- a/src/bin/pg_dump/pg_dump.c
++++ b/src/bin/pg_dump/pg_dump.c
+@@ -18749,9 +18749,8 @@ collectSequences(Archive *fout)
+ 			"seqstart, seqincrement, "
+ 			"seqmax, seqmin, "
+ 			"seqcache, seqcycle, "
+-			"last_value, is_called "
+-			"FROM pg_catalog.pg_sequence, "
+-			"pg_get_sequence_data(seqrelid) "
++			"NULL, 'f' "
++			"FROM pg_catalog.pg_sequence "
+ 			"ORDER BY seqrelid;";
+ 
+ 	res = ExecuteSqlQuery(fout, query, PGRES_TUPLES_OK);
